@@ -1,25 +1,77 @@
-# WebAuthn Attestation Format Enforcement
-# Path: docs/control-plane/webauthn-attestation-formats.md
-# Reference Policy: SOP-SEC-2026-04_hardware-key-aaguid-policy.md
+# WebAuthn Attestation Format & AAGUID Verification Specification
 
-This document establishes the official parsing guidelines for WebAuthn metadata inside the Apex Capital Hardened AdminApp environment. All credentials targeting the Tier-0 Admin Control Plane must adhere strictly to these profiles.
+**Document ID:** SPEC-SEC-2026-08  
+**Scope:** Apex Capital Hardened Tier-0 Admin Control Plane  
+**Status:** Approved  
 
-## Supported Formal Attestation Formats (IANA Registry)
+---
 
-| Format ID | Cryptographic Mechanics | Verification Requirements | Target Environment |
+## 1. Context & Purpose
+
+Attestation proves that a credential was generated inside a genuine hardware security module or platform authenticator of an approved model. This specification defines how the Apex Capital Tier-0 Admin Control Plane validates WebAuthn `attestationObject` structures during administrative hardware key onboarding and step-up challenges.
+
+---
+
+## 2. Conveyance & Format Requirements
+
+### Attestation Conveyance Preference
+* **Operator / Viewer Roles:** `conveyance: "none"` or `"indirect"`.
+* **Tier-0 Admin Registration:** `conveyance: "direct"` (or `"enterprise"` for corporate-managed endpoints).
+* **Tier-0 Action Step-Up:** Assertion challenge (validates credential signature against previously registered public key).
+
+### Supported Attestation Statement Formats (`fmt`)
+
+| Format ID | Primary Devices | Validation Strategy | Status |
 | :--- | :--- | :--- | :--- |
-| **`packed`** | X.509 Certificate Chain or Self-Signed Signature (ECDSA / EdDSA) | Verify cert chain path against FIDO MDS metadata or structural self-signature. | **Mandatory** — Primary YubiKey, SoloKeys, and hardware security tokens. |
-| **`tpm`** | AIK (Attestation Identity Key) certificate signed via trusted TPM 2.0 | Validate parsing of `certInfo` and `pubArea`. Ensure hash integrity against SHA-256 signatures. | **Corporate Endpoints** — Windows Hello for Business enterprise workstations. |
-| **`android-key`** | X.509 Certificate Extension containing key description block | Verify `teeEnforced` parameters. Assert that key usage flags match device-bound configurations. | **Mobile Hardware** — TEE/StrongBox backed Android Enterprise devices. |
-| **`fido-u2f`** | Legacy FIDO U2F X.509 attestation certificate format | Extract public keys from signature payloads; handle 65-byte uncompressed EC points. | **Legacy Tokens** — Backup/secondary physical tokens. |
-| **`apple`** | X.509 leaf cert containing value matching SHA-256 hash of `authData` + `clientDataHash` | Verify certificate chain roots against known Apple WebAuthn Roots. | **macOS Workstations** — Enterprise Secure Enclave (Touch ID / Face ID). |
+| `packed` | YubiKey, Titan Key, Nitrokey | Parse X.509 cert chain or self-signature, verify sig over `authenticatorData` + `clientDataHash`. | **Primary** |
+| `tpm` | Windows Hello (TPM 2.0) | Verify AIK certificate chain, TPMv2 digest assertion, and quote signature. | **Supported** |
+| `android-key` | Modern Android Platform Keys | Verify Key Attestation extension in certificate chain back to Google Root CA. | **Supported** |
+| `apple` | Touch ID / Face ID / Secure Enclave | Verify X.509 certificate chain back to Apple WebAuthn Root CA. | **Supported** |
+| `fido-u2f` | Legacy FIDO U2F Hardware Keys | Convert raw attestation signature to ECDSA P-256 signature and verify against U2F CA. | **Legacy** |
+| `android-safetynet` | Older Android Devices | **Deprecated**. Requests using this format are rejected at API ingress. | **Prohibited** |
 
-## Forbidden and Non-Attested Types
+---
 
-*   **`android-safetynet`**: **Explicitly Blocked**. Deprecated by Google. Any legacy fallback attempting this mechanism must be rejected with an immediate `SecurityAlert` payload.
-*   **`none`**: Allowed **only** on consumer-facing dashboards or lower tier interfaces. Tier-0 Admin Control Plane enrollment attempts containing `fmt: "none"` must throw an uncatchable initialization error.
+## 3. AAGUID Extraction & Allowlist Enforcement
 
-## Execution Constraints
-1. **Direct Conveyance Requirement**: Relying Party configurations must request `attestation: "direct"`.
-2. **AAGUID Extraction**: The 16-byte AAGUID must be unpacked directly from the `authData` payload prior to parsing.
-3. **Allowlist Cross-Reference**: Match the parsed AAGUID explicitly against `config/aaguid_whitelist.json`.
+Upon validating the attestation statement, the control plane parses the `authenticatorData` byte array to extract the **AAGUID** (Authenticator Attestation Global Unique Identifier) located at offset `37` (16 bytes).
+
+### Verification Steps
+1. Parse `attestationObject` using a CBOR decoder.
+2. Verify `fmt` is in the allowed format set.
+3. Validate signature over `authenticatorData || clientDataHash`.
+4. Extract 128-bit `aaguid` from `authenticatorData[37..53]`.
+5. Match `aaguid` against `config/aaguid_whitelist.json`.
+6. Reject credential if AAGUID is absent or non-compliant.
+
+---
+
+## 4. Audit Chain Output
+
+Every attestation evaluation generates an append-only audit event:
+
+```json
+{
+  "event": "WEBAUTHN_ATTESTATION_EVALUATED",
+  "timestamp": "2026-08-30T13:55:00Z",
+  "actor": "secops-lead@apexcapital.internal",
+  "fmt": "packed",
+  "aaguid": "2fc0579f-6522-472c-8328-01f1d6450507",
+  "status": "APPROVED",
+  "source": "sandbox-mock",
+  "sha256": "3a884812f862378f4a132bf5a92cf9c1efc0211333792f59266f8e7033503b44"
+}
+```
+
+---
+
+## 5. Policy Compliance
+
+All Tier-0 administrative actions that involve credential step-up challenges must:
+1. Request direct attestation conveyance.
+2. Validate attestation format against the approved set.
+3. Extract and verify AAGUID against the hardware allowlist.
+4. Generate immutable audit log entries with SHA-256 hashes.
+5. Reject any attestation using deprecated formats (e.g., `android-safetynet`).
+
+For more details, see **SOP-SEC-2026-04: Hardware Key AAGUID Enforcement Policy**.
