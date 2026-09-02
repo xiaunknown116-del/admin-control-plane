@@ -1,4 +1,32 @@
 # Admin Control Plane
+such as GitHub Codespaces) for your project, choose one of the options below:
+Option 1: Open via GitHub Web Interface
+ * Go to your repository on GitHub.
+ * Click the green < > Code button in the top right.
+ * Select the Codespaces tab.
+ * Click Create codespace on main (or click the + icon).
+(Shortcut: Press . (the period key) while on your GitHub repository page to immediately open a lightweight VS Code web editor in your browser).
+Option 2: Direct URL Patterns
+Replace the placeholders with your GitHub account/organization and repository name:
+ * Browser VS Code Client:
+   https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME
+
+ * Web-based Lightweight Editor (github.dev):
+   https://github.dev/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME
+
+Option 3: Launch from Visual Studio Code (Desktop)
+ * Open Visual Studio Code.
+ * Install the GitHub Codespaces extension from the Marketplace.
+ * Open the Command Palette (Ctrl + Shift + P on Windows/Linux or Cmd + Shift + P on macOS).
+ * Type and select Codespaces: Create New Codespace... or Codespaces: Connect to Codespace....
+Option 4: Open via GitHub CLI (gh)
+If you have the GitHub CLI installed and authenticated:
+# Open in browser-based VS Code
+gh codespace code --web
+
+# Open in local desktop VS Code
+gh codespace code
+
 
 ## Overview
 
